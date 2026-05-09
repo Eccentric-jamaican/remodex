@@ -286,7 +286,7 @@ internal fun TurnComposerSecondaryBar(
                 modifier =
                     Modifier
                         .weight(1f, fill = false)
-                        .widthIn(min = 0.dp, max = 160.dp),
+                        .widthIn(min = 0.dp, max = 148.dp),
                 contentAlignment = Alignment.CenterEnd,
             ) {
                 TurnGitBranchAccessory(

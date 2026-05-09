@@ -554,6 +554,7 @@ private fun LoadedGitBranchPill(
 ) {
     val unknown = stringResource(R.string.git_branch_placeholder_unknown)
     val branchName = summary.currentBranch ?: unknown
+    val compactBranchName = compactBranchLabel(branchName)
     val chrome = isAgentLightChrome()
     val pillShape = RoundedCornerShape(50)
 
@@ -618,7 +619,7 @@ private fun LoadedGitBranchPill(
                 )
 
                 Text(
-                    text = branchName,
+                    text = compactBranchName,
                     modifier =
                         Modifier
                             .weight(1f)
@@ -646,6 +647,15 @@ private fun LoadedGitBranchPill(
             }
         }
     }
+}
+
+private fun compactBranchLabel(name: String): String {
+    val trimmed = name.trim()
+    val slash = trimmed.indexOf('/')
+    if (slash <= 0 || slash >= trimmed.lastIndex) return trimmed
+    val prefix = trimmed.take(slash)
+    val rest = trimmed.drop(slash + 1)
+    return "${prefix.take(5)}/${rest}"
 }
 
 @Composable
