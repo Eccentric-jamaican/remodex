@@ -17,6 +17,12 @@ internal object TurnAttachmentCodec {
     private const val MAX_PAYLOAD_DIMENSION = 1600
     private const val THUMBNAIL_SIDE = 70
     private const val JPEG_QUALITY = 80
+    private const val SAVED_PREVIEW_MAX_DIMENSION = 1080
+    private const val SAVED_PREVIEW_MAX_BYTES = 1024 * 1024
+    private const val SAVED_THUMBNAIL_SIDE = 256
+    private const val SAVED_THUMBNAIL_QUALITY = 70
+    private val savedPreviewDimensions = listOf(SAVED_PREVIEW_MAX_DIMENSION, 900, 720, 540, 360)
+    private val savedPreviewQualities = listOf(75, 65, 55, 45)
 
     fun makeAttachment(
         context: Context,
@@ -33,7 +39,12 @@ internal object TurnAttachmentCodec {
         sourceData: ByteArray,
         sourceUrl: String? = null,
     ): CodexImageAttachment? {
-        val normalizedPayload = normalizePayloadJpeg(sourceData) ?: return null
+        val normalizedPayload =
+            normalizePayloadJpeg(
+                sourceData = sourceData,
+                maxDimension = MAX_PAYLOAD_DIMENSION,
+                quality = JPEG_QUALITY,
+            ) ?: return null
         val thumbnailBase64 = makeThumbnailBase64JPEG(normalizedPayload) ?: return null
         val payloadDataUrl = "data:image/jpeg;base64,${Base64.encodeToString(normalizedPayload, Base64.NO_WRAP)}"
         return CodexImageAttachment(
@@ -63,6 +74,45 @@ internal object TurnAttachmentCodec {
         )
     }
 
+    fun makeSavedPreviewDataURL(payloadDataUrl: String?): String? {
+        val sourceData = payloadDataUrl?.let(::decodeDataUriImageData) ?: return null
+        for (dimension in savedPreviewDimensions) {
+            for (quality in savedPreviewQualities) {
+                val preview =
+                    normalizePayloadJpeg(
+                        sourceData = sourceData,
+                        maxDimension = dimension,
+                        quality = quality,
+                    ) ?: continue
+                if (preview.size <= SAVED_PREVIEW_MAX_BYTES) {
+                    return "data:image/jpeg;base64,${Base64.encodeToString(preview, Base64.NO_WRAP)}"
+                }
+            }
+        }
+        return null
+    }
+
+    fun makeSavedThumbnailBase64JPEG(payloadDataUrl: String?): String? =
+        payloadDataUrl
+            ?.let(::decodeDataUriImageData)
+            ?.let { imageData ->
+                makeThumbnailBase64JPEG(
+                    imageData = imageData,
+                    side = SAVED_THUMBNAIL_SIDE,
+                    quality = SAVED_THUMBNAIL_QUALITY,
+                )
+            }
+
+    fun isSavedPreviewDataURLWithinLimit(payloadDataUrl: String): Boolean {
+        val commaIndex = payloadDataUrl.indexOf(',')
+        if (commaIndex <= 0) return false
+        val metadata = payloadDataUrl.substring(0, commaIndex).lowercase()
+        if (!metadata.startsWith("data:image") || !metadata.contains(";base64")) return false
+        val base64Length = payloadDataUrl.length - commaIndex - 1
+        val estimatedBytes = (base64Length * 3L) / 4L
+        return estimatedBytes <= SAVED_PREVIEW_MAX_BYTES
+    }
+
     fun decodeDataUriImageData(dataUri: String): ByteArray? {
         val commaIndex = dataUri.indexOf(',')
         if (commaIndex <= 0) return null
@@ -72,7 +122,11 @@ internal object TurnAttachmentCodec {
         return runCatching { Base64.decode(base64Part, Base64.DEFAULT) }.getOrNull()
     }
 
-    private fun normalizePayloadJpeg(sourceData: ByteArray): ByteArray? {
+    private fun normalizePayloadJpeg(
+        sourceData: ByteArray,
+        maxDimension: Int,
+        quality: Int,
+    ): ByteArray? {
         val bounds =
             BitmapFactory.Options().apply {
                 inJustDecodeBounds = true
@@ -82,16 +136,16 @@ internal object TurnAttachmentCodec {
 
         val decodeOptions =
             BitmapFactory.Options().apply {
-                inSampleSize = calculateInSampleSize(bounds.outWidth, bounds.outHeight, MAX_PAYLOAD_DIMENSION)
+                inSampleSize = calculateInSampleSize(bounds.outWidth, bounds.outHeight, maxDimension)
             }
         val decoded = BitmapFactory.decodeByteArray(sourceData, 0, sourceData.size, decodeOptions) ?: return null
 
         val longestSide = max(decoded.width, decoded.height)
         val scaled =
-            if (longestSide <= MAX_PAYLOAD_DIMENSION) {
+            if (longestSide <= maxDimension) {
                 decoded
             } else {
-                val scale = MAX_PAYLOAD_DIMENSION.toFloat() / longestSide.toFloat()
+                val scale = maxDimension.toFloat() / longestSide.toFloat()
                 val targetWidth = max(1, (decoded.width * scale).roundToInt())
                 val targetHeight = max(1, (decoded.height * scale).roundToInt())
                 Bitmap.createScaledBitmap(decoded, targetWidth, targetHeight, true).also {
@@ -99,30 +153,34 @@ internal object TurnAttachmentCodec {
                 }
             }
 
-        return scaled.compressToJpeg(JPEG_QUALITY).also {
+        return scaled.compressToJpeg(quality).also {
             scaled.recycle()
         }
     }
 
-    private fun makeThumbnailBase64JPEG(imageData: ByteArray): String? {
+    private fun makeThumbnailBase64JPEG(
+        imageData: ByteArray,
+        side: Int = THUMBNAIL_SIDE,
+        quality: Int = JPEG_QUALITY,
+    ): String? {
         val bitmap = BitmapFactory.decodeByteArray(imageData, 0, imageData.size) ?: return null
-        val thumbnail = Bitmap.createBitmap(THUMBNAIL_SIDE, THUMBNAIL_SIDE, Bitmap.Config.ARGB_8888)
+        val thumbnail = Bitmap.createBitmap(side, side, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(thumbnail)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         val scale =
             max(
-                THUMBNAIL_SIDE.toFloat() / bitmap.width.toFloat(),
-                THUMBNAIL_SIDE.toFloat() / bitmap.height.toFloat(),
+                side.toFloat() / bitmap.width.toFloat(),
+                side.toFloat() / bitmap.height.toFloat(),
             )
         val scaledWidth = bitmap.width * scale
         val scaledHeight = bitmap.height * scale
-        val left = ((THUMBNAIL_SIDE - scaledWidth) / 2f).roundToInt()
-        val top = ((THUMBNAIL_SIDE - scaledHeight) / 2f).roundToInt()
+        val left = ((side - scaledWidth) / 2f).roundToInt()
+        val top = ((side - scaledHeight) / 2f).roundToInt()
         val destination = Rect(left, top, left + scaledWidth.roundToInt(), top + scaledHeight.roundToInt())
         canvas.drawBitmap(bitmap, null, destination, paint)
         bitmap.recycle()
         val jpegData =
-            thumbnail.compressToJpeg(JPEG_QUALITY).also {
+            thumbnail.compressToJpeg(quality).also {
                 thumbnail.recycle()
             } ?: return null
         return Base64.encodeToString(jpegData, Base64.NO_WRAP)
@@ -142,11 +200,7 @@ internal object TurnAttachmentCodec {
         maxDimension: Int,
     ): Int {
         var sampleSize = 1
-        var candidateWidth = width
-        var candidateHeight = height
-        while (max(candidateWidth, candidateHeight) > maxDimension) {
-            candidateWidth = max(1, candidateWidth / 2)
-            candidateHeight = max(1, candidateHeight / 2)
+        while (max(width / (sampleSize * 2), height / (sampleSize * 2)) >= maxDimension) {
             sampleSize *= 2
         }
         return max(1, sampleSize)

@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -20,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -47,6 +49,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.remodex.mobile.R
 import com.remodex.mobile.core.model.CodexFileAttachment
 import com.remodex.mobile.core.model.CodexImageAttachment
+import com.remodex.mobile.data.ImagePreviewRetentionPolicy
 import com.remodex.mobile.data.TurnAttachmentCodec
 import com.remodex.mobile.services.WorkspaceImageService
 import com.remodex.mobile.ui.LocalCodexRepository
@@ -165,6 +168,7 @@ private fun ReadyAttachmentThumbnail(
     onClick: (() -> Unit)? = null,
 ) {
     val imageBitmap = rememberAttachmentBitmap(attachment = attachment, preferPayload = false)
+    val previewNotSaved = remember(attachment.sourceURL) { attachment.isElidedHistoryImageAttachment() }
     val shape = MaterialTheme.shapes.medium
     val clickModifier = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
     Box(
@@ -182,6 +186,12 @@ private fun ReadyAttachmentThumbnail(
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
+            )
+        } else if (previewNotSaved) {
+            Icon(
+                imageVector = Icons.Default.Image,
+                contentDescription = stringResource(R.string.turn_attachment_preview_not_saved),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         } else {
             Icon(
@@ -227,6 +237,7 @@ private fun AttachmentImagePreviewDialog(
 ) {
     val colors = MaterialTheme.colorScheme
     val imageBitmap = rememberAttachmentBitmap(attachment = attachment, preferPayload = true)
+    val previewNotSaved = remember(attachment.sourceURL) { attachment.isElidedHistoryImageAttachment() }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -256,12 +267,29 @@ private fun AttachmentImagePreviewDialog(
                         modifier = Modifier.fillMaxSize(),
                     )
                 } else {
-                    Icon(
-                        imageVector = Icons.Default.BrokenImage,
-                        contentDescription = null,
-                        tint = colors.onSurfaceVariant,
+                    Column(
                         modifier = Modifier.align(Alignment.Center),
-                    )
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(
+                            imageVector = if (previewNotSaved) Icons.Default.Image else Icons.Default.BrokenImage,
+                            contentDescription = null,
+                            tint = colors.onSurfaceVariant,
+                        )
+                        Text(
+                            text =
+                                stringResource(
+                                    if (previewNotSaved) {
+                                        R.string.turn_attachment_preview_not_saved
+                                    } else {
+                                        R.string.turn_attachment_preview_unavailable
+                                    },
+                                ),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.onSurfaceVariant,
+                        )
+                    }
                 }
 
                 TextButton(
@@ -353,3 +381,6 @@ private fun workspaceImagePath(sourceURL: String?): String? {
     }
     return source
 }
+
+private fun CodexImageAttachment.isElidedHistoryImageAttachment(): Boolean =
+    sourceURL?.trim()?.equals(ImagePreviewRetentionPolicy.ELIDED_HISTORY_IMAGE_URL, ignoreCase = true) == true

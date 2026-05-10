@@ -68,10 +68,12 @@ import com.remodex.mobile.core.model.AppLanguagePreference
 import com.remodex.mobile.core.model.AppThemePreference
 import com.remodex.mobile.core.model.ContextWindowUsage
 import com.remodex.mobile.core.model.CodexRateLimitBucket
+import com.remodex.mobile.core.model.ImagePreviewRetentionPreference
 import com.remodex.mobile.core.notification.LocalNotificationSettings
 import com.remodex.mobile.core.transport.ConnectionState
 import com.remodex.mobile.data.AppFontPreferences
 import com.remodex.mobile.data.CodexRepository
+import com.remodex.mobile.data.ImagePreviewPreferences
 import com.remodex.mobile.data.LanguagePreferences
 import com.remodex.mobile.data.ThemePreferences
 import com.remodex.mobile.ui.shared.UsageStatusSummary
@@ -94,6 +96,7 @@ fun SettingsScreen(
     var fontStyle by remember { mutableStateOf(AppFontPreferences.readFontStyle(context)) }
     var languagePreference by remember { mutableStateOf(LanguagePreferences.read(context)) }
     var themePreference by remember { mutableStateOf(ThemePreferences.read(context)) }
+    var imagePreviewPreference by remember { mutableStateOf(ImagePreviewPreferences.read(context)) }
     var localRelayHostOverride by remember {
         mutableStateOf(AppContainer.sessionPersistence.loadLocalRelayHostOverride().orEmpty())
     }
@@ -270,6 +273,14 @@ fun SettingsScreen(
             )
             SettingsNotificationSection(context = context)
 
+            SettingsImagePreviewHistorySection(
+                preference = imagePreviewPreference,
+                onPreferenceChange = { preference ->
+                    imagePreviewPreference = preference
+                    ImagePreviewPreferences.write(context, preference)
+                },
+            )
+
             SettingsUsageRateLimitsSection(repository = repository)
 
             Text(
@@ -326,6 +337,52 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+}
+
+@Composable
+private fun SettingsImagePreviewHistorySection(
+    preference: ImagePreviewRetentionPreference,
+    onPreferenceChange: (ImagePreviewRetentionPreference) -> Unit,
+) {
+    Text(
+        text = stringResource(R.string.settings_section_storage),
+        style = MaterialTheme.typography.titleMedium,
+    )
+    Text(
+        text = stringResource(R.string.settings_image_preview_history_hint),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    ImagePreviewRetentionPreference.entries.forEach { option ->
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .selectable(
+                        selected = option == preference,
+                        onClick = { onPreferenceChange(option) },
+                        role = Role.RadioButton,
+                    )
+                    .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RadioButton(
+                selected = option == preference,
+                onClick = null,
+            )
+            Column(modifier = Modifier.padding(start = 8.dp)) {
+                Text(
+                    text = stringResource(settingsImagePreviewTitleRes(option)),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                Text(
+                    text = stringResource(settingsImagePreviewSubtitleRes(option)),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
@@ -703,6 +760,20 @@ private fun settingsLanguageSubtitleRes(option: AppLanguagePreference): Int =
     when (option) {
         AppLanguagePreference.english -> R.string.settings_language_english_subtitle
         AppLanguagePreference.system -> R.string.settings_language_system_subtitle
+    }
+
+private fun settingsImagePreviewTitleRes(option: ImagePreviewRetentionPreference): Int =
+    when (option) {
+        ImagePreviewRetentionPreference.storageSaver -> R.string.settings_image_preview_storage_saver_title
+        ImagePreviewRetentionPreference.smallPreviews -> R.string.settings_image_preview_small_title
+        ImagePreviewRetentionPreference.largerPreviews -> R.string.settings_image_preview_larger_title
+    }
+
+private fun settingsImagePreviewSubtitleRes(option: ImagePreviewRetentionPreference): Int =
+    when (option) {
+        ImagePreviewRetentionPreference.storageSaver -> R.string.settings_image_preview_storage_saver_subtitle
+        ImagePreviewRetentionPreference.smallPreviews -> R.string.settings_image_preview_small_subtitle
+        ImagePreviewRetentionPreference.largerPreviews -> R.string.settings_image_preview_larger_subtitle
     }
 
 private fun readAppVersionName(context: Context): String =

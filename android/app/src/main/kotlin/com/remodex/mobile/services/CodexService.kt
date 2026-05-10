@@ -31,6 +31,8 @@ import com.remodex.mobile.core.transport.ConnectionState
 import com.remodex.mobile.core.transport.SecureControlMultiplexer
 import com.remodex.mobile.data.CodexRepository
 import com.remodex.mobile.data.CommandExecutionDetailsStore
+import com.remodex.mobile.data.ImagePreviewPreferences
+import com.remodex.mobile.data.ImagePreviewRetentionPolicy
 import com.remodex.mobile.data.IncomingEventRouter
 import com.remodex.mobile.data.MessageTimelineStore
 import com.remodex.mobile.data.QueuedTurnDraft
@@ -236,6 +238,15 @@ class CodexService(
             persistence = messagePersistence,
             lastActiveThreadId = sessionPersistence.loadLastActiveThreadId(),
             initialTailLimit = INITIAL_TIMELINE_TAIL_LIMIT,
+            prepareImageAttachmentsForTimeline = { attachments ->
+                val retention = ImagePreviewPreferences.read(appContext)
+                attachments.map { attachment ->
+                    ImagePreviewRetentionPolicy.retainedAttachment(
+                        attachment = attachment,
+                        retention = retention,
+                    )
+                }
+            },
         )
     internal val commandExecutionDetailsStore = CommandExecutionDetailsStore()
 

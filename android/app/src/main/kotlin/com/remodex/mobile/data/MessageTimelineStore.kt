@@ -12,6 +12,7 @@ import com.remodex.mobile.core.model.CodexSubagentAction
 import com.remodex.mobile.core.model.CodexSubagentRef
 import com.remodex.mobile.core.model.CodexSubagentState
 import com.remodex.mobile.core.persistence.CodexMessagePersistence
+import com.remodex.mobile.data.ImagePreviewRetentionPolicy.ELIDED_HISTORY_IMAGE_URL
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,6 +27,7 @@ import kotlinx.coroutines.sync.withLock
 internal class MessageTimelineStore(
     initialMessages: Map<String, List<CodexMessage>>,
     private val saveMessages: (Map<String, List<CodexMessage>>) -> Unit,
+    private val prepareImageAttachmentsForTimeline: (List<CodexImageAttachment>) -> List<CodexImageAttachment> = { it },
 ) {
     private data class SubagentIdentityEntry(
         val threadId: String? = null,
@@ -56,9 +58,11 @@ internal class MessageTimelineStore(
         persistence: CodexMessagePersistence,
         lastActiveThreadId: String? = null,
         initialTailLimit: Int = DEFAULT_INITIAL_TAIL_LIMIT,
+        prepareImageAttachmentsForTimeline: (List<CodexImageAttachment>) -> List<CodexImageAttachment> = { it },
     ) : this(
         initialMessages = persistence.loadInitialThreadTail(lastActiveThreadId, initialTailLimit),
         saveMessages = { map -> persistence.save(map) },
+        prepareImageAttachmentsForTimeline = prepareImageAttachmentsForTimeline,
     )
 
     internal constructor(
@@ -66,6 +70,7 @@ internal class MessageTimelineStore(
     ) : this(
         initialMessages = initialMessages,
         saveMessages = {},
+        prepareImageAttachmentsForTimeline = { it },
     )
 
     private fun publishMessages(map: Map<String, List<CodexMessage>>) {
@@ -828,6 +833,7 @@ internal class MessageTimelineStore(
         val trimmed = text.trim()
         val id = UUID.randomUUID().toString()
         if (trimmed.isEmpty() && attachments.isEmpty()) return id
+        val timelineAttachments = prepareImageAttachmentsForTimeline(attachments)
         mutex.withLock {
             val map = _messagesByThread.value.toMutableMap()
             val list = map[threadId].orEmpty().toMutableList()
@@ -841,7 +847,7 @@ internal class MessageTimelineStore(
                     createdAt = Instant.now(),
                     deliveryState = CodexMessageDeliveryState.pending,
                     isStreaming = false,
-                    attachments = attachments,
+                    attachments = timelineAttachments,
                 ),
             )
             map[threadId] = list
@@ -882,6 +888,7 @@ internal class MessageTimelineStore(
         val t = text.trim()
         val normalizedText = normalizedMessageText(t)
         if (t.isEmpty() && attachments.isEmpty()) return
+        val timelineAttachments = prepareImageAttachmentsForTimeline(attachments)
         mutex.withLock {
             val map = _messagesByThread.value.toMutableMap()
             val list = map[threadId].orEmpty().toMutableList()
@@ -889,7 +896,7 @@ internal class MessageTimelineStore(
                 list.indexOfLast { m ->
                     m.role == CodexMessageRole.user &&
                         normalizedMessageText(m.text) == normalizedText &&
-                        compatibleUserAttachments(m.attachments, attachments) &&
+                        compatibleUserAttachments(m.attachments, timelineAttachments) &&
                         (
                             (turnId != null && (m.turnId == null || m.turnId == turnId)) ||
                                 (turnId == null && m.turnId == null)
@@ -901,7 +908,7 @@ internal class MessageTimelineStore(
                     existing.copy(
                         deliveryState = CodexMessageDeliveryState.confirmed,
                         turnId = turnId ?: existing.turnId,
-                        attachments = mergeUserAttachments(existing.attachments, attachments),
+                        attachments = mergeUserAttachments(existing.attachments, timelineAttachments),
                     )
                 if (next != existing) {
                     list[existingIdx] = next
@@ -926,7 +933,7 @@ internal class MessageTimelineStore(
                         turnId = turnId,
                         deliveryState = CodexMessageDeliveryState.confirmed,
                         isStreaming = false,
-                        attachments = attachments,
+                        attachments = timelineAttachments,
                     ),
                 )
                 if (insertionIndex < list.lastIndex) {
@@ -1540,18 +1547,37 @@ internal class MessageTimelineStore(
     private fun compatibleUserAttachments(
         existing: List<CodexImageAttachment>,
         incoming: List<CodexImageAttachment>,
-    ): Boolean =
-        existing == incoming || existing.isEmpty() || incoming.isEmpty()
+    ): Boolean {
+        if (existing == incoming || existing.isEmpty() || incoming.isEmpty()) return true
+        return isRenderableOnly(existing) && isElidedOnly(incoming) ||
+            isRenderableOnly(incoming) && isElidedOnly(existing)
+    }
 
     private fun mergeUserAttachments(
         existing: List<CodexImageAttachment>,
         incoming: List<CodexImageAttachment>,
     ): List<CodexImageAttachment> =
         when {
+            existing.any(::isRenderableImageAttachment) -> existing
+            incoming.any(::isRenderableImageAttachment) -> incoming
             existing.isNotEmpty() -> existing
             incoming.isNotEmpty() -> incoming
             else -> emptyList()
         }
+
+    private fun isRenderableImageAttachment(attachment: CodexImageAttachment): Boolean =
+        attachment.thumbnailBase64JPEG.isNotBlank() ||
+            !attachment.payloadDataURL.isNullOrBlank() ||
+            (!attachment.sourceURL.isNullOrBlank() && !isElidedHistoryImageAttachment(attachment))
+
+    private fun isRenderableOnly(attachments: List<CodexImageAttachment>): Boolean =
+        attachments.isNotEmpty() && attachments.all(::isRenderableImageAttachment)
+
+    private fun isElidedOnly(attachments: List<CodexImageAttachment>): Boolean =
+        attachments.isNotEmpty() && attachments.all(::isElidedHistoryImageAttachment)
+
+    private fun isElidedHistoryImageAttachment(attachment: CodexImageAttachment): Boolean =
+        attachment.sourceURL?.trim()?.equals(ELIDED_HISTORY_IMAGE_URL, ignoreCase = true) == true
 
     private fun reassignOrderIndexesInCurrentOrder(list: MutableList<CodexMessage>) {
         for (index in list.indices) {

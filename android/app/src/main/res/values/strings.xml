@@ -102,6 +102,8 @@
     <string name="turn_attachment_load_failed">One or more attachments could not be loaded.</string>
     <string name="turn_attachment_file_too_large">File is too large (max %1$d KB).</string>
     <string name="turn_attachment_file_binary_summary">Binary content preview omitted.</string>
+    <string name="turn_attachment_preview_not_saved">Image received by Codex!</string>
+    <string name="turn_attachment_preview_unavailable">Preview unavailable</string>
     <string name="turn_attachment_camera_unavailable">Camera is not available on this device.</string>
     <string name="turn_attachment_camera_permission_denied">Camera permission is required to take a photo.</string>
     <string name="turn_send_cd">Send</string>
@@ -309,6 +311,7 @@
     <string name="settings_local_relay_host_override_label">Local relay host override</string>
     <string name="settings_local_relay_host_override_placeholder">Computer LAN IP or emulator host</string>
     <string name="settings_section_notifications">Notifications</string>
+    <string name="settings_section_storage">Storage</string>
     <string name="settings_section_usage">Usage &amp; rate limits</string>
     <string name="settings_section_about">About</string>
     <string name="nav_about_remodex">About Remodex</string>
@@ -324,6 +327,13 @@
     <string name="settings_notifications_disabled_hint">Android is currently blocking local alerts for this app.</string>
     <string name="settings_notifications_request_permission">Allow notifications</string>
     <string name="settings_notifications_open_system_settings">Open notification settings</string>
+    <string name="settings_image_preview_history_hint">Choose what Remodex keeps on this phone after you send images.</string>
+    <string name="settings_image_preview_storage_saver_title">Storage saver</string>
+    <string name="settings_image_preview_storage_saver_subtitle">Do not save image previews in chat history.</string>
+    <string name="settings_image_preview_small_title">Small previews</string>
+    <string name="settings_image_preview_small_subtitle">Save lightweight thumbnails so sent images remain recognizable.</string>
+    <string name="settings_image_preview_larger_title">Larger previews</string>
+    <string name="settings_image_preview_larger_subtitle">Save compressed previews that can be opened later. Uses more storage.</string>
     <string name="usage_rate_limits_hint">Data comes from the bridge; nothing is sent to a hosted dashboard.</string>
     <string name="usage_rate_limits_refresh">Refresh</string>
     <string name="usage_rate_limits_offline">Connect to the bridge to load account limits.</string>

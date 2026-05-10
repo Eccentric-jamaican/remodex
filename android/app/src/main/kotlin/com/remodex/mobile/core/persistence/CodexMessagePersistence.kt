@@ -5,6 +5,8 @@ import com.remodex.mobile.core.model.CodexMessage
 import com.remodex.mobile.core.model.CodexMessageKind
 import com.remodex.mobile.core.security.CodexSecureKeys
 import com.remodex.mobile.core.security.SecureStore
+import com.remodex.mobile.data.ImagePreviewPreferences
+import com.remodex.mobile.data.ImagePreviewRetentionPolicy
 import java.io.File
 import java.security.MessageDigest
 import kotlinx.serialization.builtins.ListSerializer
@@ -259,13 +261,32 @@ class CodexMessagePersistence(
         return newKey
     }
 
-    private fun sanitizedForPersistence(value: Map<String, List<CodexMessage>>): Map<String, List<CodexMessage>> =
-        value.mapValues { (_, messages) ->
-            messages.filter {
-                it.kind != CodexMessageKind.userInputPrompt &&
-                    it.kind != CodexMessageKind.pendingApproval
-            }
+    private fun sanitizedForPersistence(value: Map<String, List<CodexMessage>>): Map<String, List<CodexMessage>> {
+        val imagePreviewRetention = ImagePreviewPreferences.read(context)
+        return value.mapValues { (_, messages) ->
+            messages
+                .filter {
+                    it.kind != CodexMessageKind.userInputPrompt &&
+                        it.kind != CodexMessageKind.pendingApproval
+                }
+                .map { message ->
+                    if (message.attachments.isEmpty()) {
+                        message
+                    } else {
+                        message.copy(
+                            attachments =
+                                message.attachments.map { attachment ->
+                                    ImagePreviewRetentionPolicy.retainedAttachment(
+                                        attachment = attachment,
+                                        retention = imagePreviewRetention,
+                                        generateLargerPreview = false,
+                                    )
+                                },
+                        )
+                    }
+                }
         }
+    }
 
     private companion object {
         const val DEFAULT_TAIL_CACHE_LIMIT = 48
